@@ -349,6 +349,16 @@ $tagsFile = Join-Path $OutputDirectory "tags-$ResourceGroupName-$timestamp.json"
   [System.Text.UTF8Encoding]::new($false)
 )
 
+if ($resourceGroupExists) {
+  $resourceGroupId = "/subscriptions/$activeSubscriptionId/resourceGroups/$ResourceGroupName"
+  az tag update `
+    --resource-id $resourceGroupId `
+    --operation Merge `
+    --tags "env=$EnvName" 'project=cosmos-labs' "student=$UserPrincipalName" `
+    --only-show-errors | Out-Null
+  Assert-LastAzCommand -FailureMessage "Failed to apply workshop tags to resource group '$ResourceGroupName'."
+}
+
 # bicepparam's fabricAdminMembers is a placeholder; Fabric capacity creation fails
 # with "Unable to authorize with Azure Active Directory" if it can't resolve a
 # member UPN in this tenant, so override it with the student's own (real) UPN.
@@ -361,6 +371,7 @@ $fabricMembersFile = Join-Path $OutputDirectory "fabric-admins-$ResourceGroupNam
 )
 
 $deploymentScope = if ($resourceGroupExists) { 'group' } else { 'sub' }
+$deploymentStudentOwnerObjectId = if ($deploymentScope -eq 'group') { '' } else { $studentObjectId }
 $baseParametersFile = $BicepparamFile
 if ($deploymentScope -eq 'group') {
   $resourceTemplateFile = Join-Path $PSScriptRoot '..\bicep\main.resources.bicep'
@@ -385,7 +396,7 @@ $deployParams = @(
   '--parameters', "vmAdminPassword=$vmAdminPassword",
   '--parameters', "applyVmSecurityType=$(((-not $vmExists).ToString().ToLowerInvariant()))",
   '--parameters', "vmComputerName=$VmComputerName",
-  '--parameters', "studentOwnerObjectId=$studentObjectId",
+  '--parameters', "studentOwnerObjectId=$deploymentStudentOwnerObjectId",
   '--parameters', "isDocDB=$($IsDocDB.ToString().ToLowerInvariant())",
   '--parameters', "useExistingVnet=$($useExistingVnet.ToString().ToLowerInvariant())",
   '--parameters', "tags=@$tagsFile",
