@@ -17,6 +17,8 @@ Before running the deployment, choose:
 * A unique resource group name, such as `my-cosmos-workshop`.
 * An Azure region available to your subscription, such as `westus3`.
 
+If you do not have Contributor access at subscription scope, create the resource group first and ensure you have Owner access on it. The script deploys into an existing resource group at resource-group scope; subscription permissions are only required when the script must create the resource group.
+
 Replace `<your-resource-group-name>` and `<your-region>` in the command below with your own values. Do not include the angle brackets.
 
 ## 3. Clone and deploy

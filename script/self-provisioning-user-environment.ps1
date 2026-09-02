@@ -360,13 +360,27 @@ $fabricMembersFile = Join-Path $OutputDirectory "fabric-admins-$ResourceGroupNam
   [System.Text.UTF8Encoding]::new($false)
 )
 
+$deploymentScope = if ($resourceGroupExists) { 'group' } else { 'sub' }
+$baseParametersFile = $BicepparamFile
+if ($deploymentScope -eq 'group') {
+  $resourceTemplateFile = Join-Path $PSScriptRoot '..\bicep\main.resources.bicep'
+  $compiledParameters = [string](& az bicep build-params --file $BicepparamFile --stdout)
+  Assert-LastAzCommand -FailureMessage "Failed to compile Bicep parameters from '$BicepparamFile'."
+  $groupParametersDocument = ($compiledParameters | ConvertFrom-Json).parametersJson | ConvertFrom-Json
+  $groupParametersDocument.parameters.PSObject.Properties.Remove('resourceGroupName')
+  $baseParametersFile = Join-Path $OutputDirectory "group-parameters-$ResourceGroupName-$timestamp.json"
+  [System.IO.File]::WriteAllText(
+    $baseParametersFile,
+    ($groupParametersDocument | ConvertTo-Json -Depth 20),
+    [System.Text.UTF8Encoding]::new($false)
+  )
+}
+
 $deployParams = @(
-  '--location', $Location,
   '--name', $deploymentName,
-  '--parameters', $BicepparamFile,
+  '--parameters', $baseParametersFile,
   '--parameters', "envName=$EnvName",
   '--parameters', "location=$Location",
-  '--parameters', "resourceGroupName=$ResourceGroupName",
   '--parameters', "vmAdminUsername=$VmAdminUsername",
   '--parameters', "vmAdminPassword=$vmAdminPassword",
   '--parameters', "applyVmSecurityType=$(((-not $vmExists).ToString().ToLowerInvariant()))",
@@ -377,6 +391,11 @@ $deployParams = @(
   '--parameters', "tags=@$tagsFile",
   '--parameters', "fabricAdminMembers=@$fabricMembersFile"
 )
+if ($deploymentScope -eq 'group') {
+  $deployParams = @('--resource-group', $ResourceGroupName, '--template-file', $resourceTemplateFile) + $deployParams
+} else {
+  $deployParams = @('--location', $Location, '--parameters', "resourceGroupName=$ResourceGroupName") + $deployParams
+}
 if ($SharedFabric -or $NoFabric) {
   $deployParams += @('--parameters', 'deployFabric=false')
 }
@@ -388,7 +407,11 @@ if ($DiskControllerType) {
 }
 
 Write-Output "running what-if for deployment $deploymentName"
-az deployment sub what-if @deployParams --no-pretty-print --only-show-errors | Out-Null
+if ($deploymentScope -eq 'group') {
+  az deployment group what-if @deployParams --no-pretty-print --only-show-errors | Out-Null
+} else {
+  az deployment sub what-if @deployParams --no-pretty-print --only-show-errors | Out-Null
+}
 Assert-LastAzCommand -FailureMessage "What-if failed for deployment '$deploymentName'."
 
 # Retry transient ARM failures (e.g., Cognitive Services 'provisioning state is not
@@ -399,7 +422,11 @@ $deploymentAttempts = 3
 $deploymentDelaySeconds = 45
 for ($attempt = 1; $attempt -le $deploymentAttempts; $attempt++) {
   Write-Output "deploying $deploymentName (attempt $attempt/$deploymentAttempts)"
-  az deployment sub create @deployParams --only-show-errors | Out-Null
+  if ($deploymentScope -eq 'group') {
+    az deployment group create @deployParams --only-show-errors | Out-Null
+  } else {
+    az deployment sub create @deployParams --only-show-errors | Out-Null
+  }
   if ($LASTEXITCODE -eq 0) { break }
   if ($attempt -lt $deploymentAttempts) {
     Write-Warning "deployment attempt $attempt failed; waiting $deploymentDelaySeconds s before retry (often a transient AI Foundry / Cognitive Services race)"
@@ -408,7 +435,11 @@ for ($attempt = 1; $attempt -le $deploymentAttempts; $attempt++) {
 }
 Assert-LastAzCommand -FailureMessage "Deployment '$deploymentName' failed after $deploymentAttempts attempts."
 
-$outputsJson = az deployment sub show --name $deploymentName --query properties.outputs -o json
+$outputsJson = if ($deploymentScope -eq 'group') {
+  az deployment group show --resource-group $ResourceGroupName --name $deploymentName --query properties.outputs -o json
+} else {
+  az deployment sub show --name $deploymentName --query properties.outputs -o json
+}
 Assert-LastAzCommand -FailureMessage "Failed to read outputs for deployment '$deploymentName'."
 $outputs = $outputsJson | ConvertFrom-Json
 
