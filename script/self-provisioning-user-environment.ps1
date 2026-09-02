@@ -292,7 +292,7 @@ $vmName = "lab-vm-$EnvName-01"
 $resourceGroupExists = [System.Convert]::ToBoolean((& az group exists --name $ResourceGroupName -o tsv).Trim())
 $vmExists = $false
 if ($resourceGroupExists) {
-  $vmExists = [System.Convert]::ToBoolean((& az vm show --resource-group $ResourceGroupName --name $vmName --query "id != null" -o tsv 2>$null).Trim())
+  $vmExists = [System.Convert]::ToBoolean((& az vm list --resource-group $ResourceGroupName --query "contains([].name, '$vmName')" -o tsv).Trim())
   $existingDiskControllerType = [string](& az vm list --resource-group $ResourceGroupName --query "[?name=='$vmName'] | [0].storageProfile.diskControllerType" -o tsv)
   if ($existingDiskControllerType -and $existingDiskControllerType.Trim() -ne $DiskControllerType) {
     throw "Existing VM '$vmName' uses $($existingDiskControllerType.Trim()), which cannot be converted in place to $DiskControllerType. Use a new resource group to deploy $VmSize."
