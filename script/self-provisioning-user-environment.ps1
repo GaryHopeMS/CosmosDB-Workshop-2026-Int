@@ -454,6 +454,17 @@ $outputsJson = if ($deploymentScope -eq 'group') {
 Assert-LastAzCommand -FailureMessage "Failed to read outputs for deployment '$deploymentName'."
 $outputs = $outputsJson | ConvertFrom-Json
 
+if ($vmExists) {
+  Write-Output "updating credentials for existing VM $($outputs.vmName.value)"
+  az vm user update `
+    --resource-group $ResourceGroupName `
+    --name $outputs.vmName.value `
+    --username $VmAdminUsername `
+    --password $vmAdminPassword `
+    --only-show-errors | Out-Null
+  Assert-LastAzCommand -FailureMessage "Failed to update credentials for existing VM '$($outputs.vmName.value)'."
+}
+
 Write-Output 'creating Bastion shareable link'
 $bastionUri = Get-BastionShareableLink `
   -BastionId $outputs.bastionId.value `
