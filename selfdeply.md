@@ -54,11 +54,17 @@ After signing in, accept the default options for all Windows first-time configur
 Open **Windows Terminal** in the lab VM, then create and open the `C:\data` directory:
 
 ```powershell
+az login --identity
 md \data
 cd \data
 git clone https://github.com/GaryHopeMS/CosmosDB-Workshop-2026-Int
 cd .\CosmosDB-Workshop-2026-Int\
 .\SetEnv.ps1
+```
+Open a new terminal window 
+
+```powershell
+cd \data\CosmosDB-Workshop-2026-Int\
 code .
 ```
 
